@@ -1,38 +1,66 @@
 import os
-import asyncio
 import requests
 import discord
 from discord.ext import commands
-from google import genai
-from dotenv import load_dotenv
-import tempfile
+import google.generativeai as genai
 
-# Load local environment variables
-load_dotenv()
+# --- SECRETS & CREDENTIALS ---
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")  # Retrieved from environment variables
+GEMINI_API_KEY = "AQ.Ab8RN6LyDBYYR7HEvRhTd3T0TsPRlfsA7RH2xXGqhev9gNNABA"
 
-# Secrets
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GDRIVE_CLIENT_ID = os.getenv("GDRIVE_CLIENT_ID")
-GDRIVE_CLIENT_SECRET = os.getenv("GDRIVE_CLIENT_SECRET")
-GDRIVE_REFRESH_TOKEN = os.getenv("GDRIVE_REFRESH_TOKEN")
+# Google Drive OAuth 2.0 Credentials
+GDRIVE_CLIENT_ID = "677902998242-jm727d13ttrhbs4ditqqv0js3l3jbmup.apps.googleusercontent.com"
+GDRIVE_CLIENT_SECRET = "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"
+GDRIVE_REFRESH_TOKEN = "1//04cUKZsF4DvPmCgYIARAAGAQSNwF-L9IrAlJltdbza1GHZrbrvxbRWU0VcLl4A-QNsZf6ekFeEwZXUvzN3p_OrOH8DaCXXkZk5SM"
 
-# Initialize Gemini Client
-ai_client = genai.Client(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel('gemini-2.0-flash')  # Fixed: Changed from gemini-2.5-flash to valid model
+# Initialize Gemini AI Model
+genai.configure(api_key=GEMINI_API_KEY)
+llm_model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Initialize Discord Bot
+# Initialize Discord Bot with Intents
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+@bot.event
+async def on_ready():
+    print(f"✅ Bot initialized and logged in as {bot.user}")
+
+@bot.command(name="generate")
+async def generate_video(ctx, *, user_prompt: str):
+    await ctx.send(f"🎬 **Topic received:** *'{user_prompt}'*\nWriting script prompts with Gemini AI...")
+
+    # 1. AI SCRIPT & PROMPT GENERATION
+    system_instruction = (
+        f"You are an expert AI video director. Based on this topic: '{user_prompt}', "
+        f"generate exactly 5 highly detailed, cinematic image-to-video text prompts. "
+        f"Output strictly ONLY the 5 prompts, one per line, without any numbering, introductions, or conversational text."
+    )
+
+    try:
+        response = llm_model.generate_content(system_instruction)
+        scene_prompts = [p.strip() for p in response.text.strip().split("\n") if p.strip()][:5]
+
+        formatted_prompts = "\n".join([f"{i+1}. {p}" for i, p in enumerate(scene_prompts)])
+        await ctx.send(f"📝 **Generated Video Prompts:**\n```\n{formatted_prompts}\n```")
+        await ctx.send("⚙️ **Triggering video generation pipeline...**")
+
+        # 2. RUN PIPELINE & UPLOAD TO DRIVE
+        video_filename = f"{user_prompt.replace(' ', '_')}.mp4"
+        target_file_path = f"/kaggle/working/{video_filename}"
+
+        upload_success = upload_to_gdrive(target_file_path, video_filename)
+
+        if upload_success:
+            await ctx.send(f"✅ **Success!** Video *'{video_filename}'* generated and uploaded to Google Drive.")
+        else:
+            await ctx.send("⚠️ Video processing finished, but Google Drive upload failed.")
+
+    except Exception as e:
+        await ctx.send(f"❌ Error executing pipeline: `{str(e)}`")
 
 def upload_to_gdrive(file_path, drive_filename):
-    """Exchanges refresh token for access token and uploads file to Google Drive."""
-    if not os.path.exists(file_path):
-        print(f"Error: File '{file_path}' does not exist.")
-        return False
-
+    """Refreshes access token and uploads file to Google Drive via API v3."""
     token_url = "https://oauth2.googleapis.com/token"
     token_data = {
         'client_id': GDRIVE_CLIENT_ID,
@@ -41,137 +69,32 @@ def upload_to_gdrive(file_path, drive_filename):
         'grant_type': 'refresh_token'
     }
 
-    try:
-        res = requests.post(token_url, data=token_data).json()
-        access_token = res.get('access_token')
+    res = requests.post(token_url, data=token_data).json()
+    access_token = res.get('access_token')
 
-        if not access_token:
-            print("OAuth Refresh Error:", res)
-            return False
-
-        headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
-        
-        # Fixed: Add headers to resumable upload initialization
-        upload_req = requests.post(
-            'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
-            headers=headers,
-            json={'name': drive_filename}
-        )
-        upload_url = upload_req.headers.get('Location')
-
-        if not upload_url:
-            print("Error: Could not get upload URL from Google Drive API")
-            return False
-
-        with open(file_path, 'rb') as f:
-            upload_resp = requests.put(
-                upload_url,
-                headers={'Content-Length': str(os.path.getsize(file_path))},
-                data=f
-            )
-
-        return upload_resp.status_code in [200, 201]
-    except Exception as e:
-        print(f"Upload error: {str(e)}")
+    if not access_token:
+        print("OAuth Refresh Failed:", res)
         return False
 
-
-def generate_video_mock(prompts, output_path):
-    """Mock video generation function. Replace with actual video generation API."""
-    # TODO: Implement actual video generation using your preferred API
-    # (Runway ML, Synthesia, Hugging Face, etc.)
-    # For now, create a placeholder file for testing
-    try:
-        with open(output_path, 'wb') as f:
-            f.write(b'Mock video file for testing')
-        return True
-    except Exception as e:
-        print(f"Error generating mock video: {str(e)}")
-        return False
-
-
-@bot.event
-async def on_ready():
-    print(f"✅ Bot successfully online and logged in as {bot.user}")
-
-
-@bot.command(name="generate")
-async def generate_video(ctx, *, user_prompt: str):
-    """Generate video prompts using Gemini and upload to Google Drive."""
-    # Validate input
-    if not user_prompt or len(user_prompt.strip()) == 0:
-        await ctx.send("❌ Please provide a valid topic.")
-        return
-    
-    await ctx.send(f"🎬 **Received topic:** *'{user_prompt}'*\nGenerating script prompts using Gemini AI...")
-
-    system_instruction = (
-        f"You are an expert AI video director. Based on this topic: '{user_prompt}', "
-        f"generate exactly 5 cinematic, detailed text prompts for video generation. "
-        f"Output ONLY the 5 prompts, one per line, with no extra text or numbering."
+    headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
+    upload_req = requests.post(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
+        headers=headers,
+        json={'name': drive_filename}
     )
+    upload_url = upload_req.headers.get('Location')
 
-    target_file_path = None
-    try:
-        # Fixed: Call Gemini model with proper API usage
-        response = gemini_model.generate_content(system_instruction)
-        
-        # Parse prompts from response
-        if not response or not response.text:
-            await ctx.send("❌ Failed to generate prompts. Please try again.")
-            return
-        
-        scene_prompts = [line.strip() for line in response.text.strip().split("\n") if line.strip()][:5]
-        
-        if not scene_prompts:
-            await ctx.send("❌ Failed to generate prompts. Please try again.")
-            return
-        
-        formatted_prompts = "\n".join([f"{i+1}. {p}" for i, p in enumerate(scene_prompts)])
-        
-        # Send formatted prompts to Discord channel
-        await ctx.send(f"📝 **Generated Script Prompts:**\n```\n{formatted_prompts}\n```")
-        await ctx.send("🎥 **Generating video from prompts...**")
+    if not upload_url:
+        return False
 
-        # Generate safe video filename
-        safe_filename = "".join(c if c.isalnum() or c in (' ', '_', '-') else '_' 
-                               for c in user_prompt)[:50]
-        video_filename = f"{safe_filename}.mp4"
-        
-        # Fixed: Use proper temp directory
-        temp_dir = tempfile.gettempdir()
-        target_file_path = os.path.join(temp_dir, video_filename)
+    with open(file_path, 'rb') as f:
+        upload_resp = requests.put(
+            upload_url,
+            headers={'Content-Length': str(os.path.getsize(file_path))},
+            data=f
+        )
 
-        # Generate video (blocking operation in separate thread)
-        video_generated = await asyncio.to_thread(generate_video_mock, scene_prompts, target_file_path)
-        
-        if not video_generated:
-            await ctx.send("⚠️ Video generation failed.")
-            return
-
-        await ctx.send("⚙️ **Uploading to Google Drive...**")
-
-        # Upload to Google Drive (blocking operation in separate thread)
-        upload_success = await asyncio.to_thread(upload_to_gdrive, target_file_path, video_filename)
-
-        if upload_success:
-            await ctx.send(f"✅ **Success!** Video *'{video_filename}'* uploaded to Google Drive.")
-        else:
-            await ctx.send("⚠️ Video generated, but Google Drive upload failed.")
-
-    except Exception as e:
-        await ctx.send(f"❌ Pipeline execution error: `{str(e)}`")
-        print(f"Error details: {str(e)}")
-    
-    finally:
-        # Fixed: Ensure file cleanup in finally block
-        if target_file_path and os.path.exists(target_file_path):
-            try:
-                os.remove(target_file_path)
-                print(f"Cleaned up: {target_file_path}")
-            except Exception as e:
-                print(f"Warning: Could not delete local file: {str(e)}")
-
+    return upload_resp.status_code in [200, 201]
 
 if __name__ == "__main__":
     bot.run(DISCORD_TOKEN)
