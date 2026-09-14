@@ -96,7 +96,7 @@ async def generate_video(ctx, *, user_prompt: str):
 
         # Run blocking upload in a separate thread
         @bot.command(name="generate")
-        async def generate_video(ctx, *, user_prompt: str):
+async def generate_video(ctx, *, user_prompt: str):
     await ctx.send(f"🎬 **Received topic:** *'{user_prompt}'*\nGenerating script prompts using Gemini AI...")
 
     system_instruction = (
