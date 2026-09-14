@@ -96,7 +96,6 @@ async def generate_video(ctx, *, user_prompt: str):
 
         # Run blocking upload in a separate thread
         upload_success = await asyncio.to_thread(upload_to_gdrive, target_file_path, video_filename)
-
         @bot.command(name="generate")
 async def generate_video(ctx, *, user_prompt: str):
     await ctx.send(f"🎬 **Received topic:** *'{user_prompt}'*\nGenerating script prompts using Gemini AI...")
