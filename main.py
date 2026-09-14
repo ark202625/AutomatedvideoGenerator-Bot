@@ -97,6 +97,32 @@ async def generate_video(ctx, *, user_prompt: str):
         # Run blocking upload in a separate thread
         upload_success = await asyncio.to_thread(upload_to_gdrive, target_file_path, video_filename)
 
+        @bot.command(name="generate")
+async def generate_video(ctx, *, user_prompt: str):
+    await ctx.send(f"🎬 **Received topic:** *'{user_prompt}'*\nGenerating script prompts using Gemini AI...")
+
+    system_instruction = (
+        f"You are an expert AI video director. Based on this topic: '{user_prompt}', "
+        f"generate exactly 5 cinematic, detailed text prompts for video generation. "
+        f"Output ONLY the 5 prompts, one per line, with no extra text or numbering."
+    )
+
+    try:
+        response = ai_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=system_instruction
+        )
+        scene_prompts = [line.strip() for line in response.text.strip().split("\n") if line.strip()][:5]
+        formatted_prompts = "\n".join([f"{i+1}. {p}" for i, p in enumerate(scene_prompts)])
+        
+        await ctx.send(f"📝 **Generated Script Prompts:**\n```\n{formatted_prompts}\n```")
+        await ctx.send("⚙️ **Triggering video generation pipeline...**")
+
+        video_filename = f"{user_prompt.replace(' ', '_')}.mp4"
+        target_file_path = f"/tmp/{video_filename}"
+
+        upload_success = await asyncio.to_thread(upload_to_gdrive, target_file_path, video_filename)
+
         if upload_success:
             await ctx.send(f"✅ **Success!** Video *'{video_filename}'* uploaded to Google Drive.")
         else:
