@@ -95,7 +95,8 @@ async def generate_video(ctx, *, user_prompt: str):
         target_file_path = f"/tmp/{video_filename}"  # Ensure directory exists on Render
 
         # Run blocking upload in a separate thread
-        @bot.command(name="generate")async def generate_video(ctx, *, user_prompt: str):
+        @bot.command(name="generate")
+        async def generate_video(ctx, *, user_prompt: str):
     await ctx.send(f"🎬 **Received topic:** *'{user_prompt}'*\nGenerating script prompts using Gemini AI...")
 
     system_instruction = (
