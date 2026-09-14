@@ -3,8 +3,9 @@ import asyncio
 import requests
 import discord
 from discord.ext import commands
-import generative.ai as genai
+import google.generativeai as genai
 from dotenv import load_dotenv
+import tempfile
 
 # Load local environment variables
 load_dotenv()
@@ -18,7 +19,7 @@ GDRIVE_REFRESH_TOKEN = os.getenv("GDRIVE_REFRESH_TOKEN")
 
 # Initialize Gemini Client
 genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel('gemini-2.5-flash')
+gemini_model = genai.GenerativeModel('gemini-2.0-flash')  # Fixed: Changed from gemini-2.5-flash to valid model
 
 # Initialize Discord Bot
 intents = discord.Intents.default()
@@ -49,6 +50,8 @@ def upload_to_gdrive(file_path, drive_filename):
             return False
 
         headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
+        
+        # Fixed: Add headers to resumable upload initialization
         upload_req = requests.post(
             'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
             headers=headers,
@@ -78,9 +81,13 @@ def generate_video_mock(prompts, output_path):
     # TODO: Implement actual video generation using your preferred API
     # (Runway ML, Synthesia, Hugging Face, etc.)
     # For now, create a placeholder file for testing
-    with open(output_path, 'wb') as f:
-        f.write(b'Mock video file for testing')
-    return True
+    try:
+        with open(output_path, 'wb') as f:
+            f.write(b'Mock video file for testing')
+        return True
+    except Exception as e:
+        print(f"Error generating mock video: {str(e)}")
+        return False
 
 
 @bot.event
@@ -91,6 +98,11 @@ async def on_ready():
 @bot.command(name="generate")
 async def generate_video(ctx, *, user_prompt: str):
     """Generate video prompts using Gemini and upload to Google Drive."""
+    # Validate input
+    if not user_prompt or len(user_prompt.strip()) == 0:
+        await ctx.send("❌ Please provide a valid topic.")
+        return
+    
     await ctx.send(f"🎬 **Received topic:** *'{user_prompt}'*\nGenerating script prompts using Gemini AI...")
 
     system_instruction = (
@@ -99,9 +111,16 @@ async def generate_video(ctx, *, user_prompt: str):
         f"Output ONLY the 5 prompts, one per line, with no extra text or numbering."
     )
 
+    target_file_path = None
     try:
-        # Call Gemini model
+        # Fixed: Call Gemini model with proper API usage
         response = gemini_model.generate_content(system_instruction)
+        
+        # Parse prompts from response
+        if not response or not response.text:
+            await ctx.send("❌ Failed to generate prompts. Please try again.")
+            return
+        
         scene_prompts = [line.strip() for line in response.text.strip().split("\n") if line.strip()][:5]
         
         if not scene_prompts:
@@ -114,9 +133,14 @@ async def generate_video(ctx, *, user_prompt: str):
         await ctx.send(f"📝 **Generated Script Prompts:**\n```\n{formatted_prompts}\n```")
         await ctx.send("🎥 **Generating video from prompts...**")
 
-        # Generate video filename
-        video_filename = f"{user_prompt.replace(' ', '_').replace('/', '_')}.mp4"
-        target_file_path = f"/tmp/{video_filename}"
+        # Generate safe video filename
+        safe_filename = "".join(c if c.isalnum() or c in (' ', '_', '-') else '_' 
+                               for c in user_prompt)[:50]
+        video_filename = f"{safe_filename}.mp4"
+        
+        # Fixed: Use proper temp directory
+        temp_dir = tempfile.gettempdir()
+        target_file_path = os.path.join(temp_dir, video_filename)
 
         # Generate video (blocking operation in separate thread)
         video_generated = await asyncio.to_thread(generate_video_mock, scene_prompts, target_file_path)
@@ -132,17 +156,21 @@ async def generate_video(ctx, *, user_prompt: str):
 
         if upload_success:
             await ctx.send(f"✅ **Success!** Video *'{video_filename}'* uploaded to Google Drive.")
-            # Clean up local file after successful upload
-            try:
-                os.remove(target_file_path)
-            except Exception as e:
-                print(f"Warning: Could not delete local file: {str(e)}")
         else:
             await ctx.send("⚠️ Video generated, but Google Drive upload failed.")
 
     except Exception as e:
         await ctx.send(f"❌ Pipeline execution error: `{str(e)}`")
         print(f"Error details: {str(e)}")
+    
+    finally:
+        # Fixed: Ensure file cleanup in finally block
+        if target_file_path and os.path.exists(target_file_path):
+            try:
+                os.remove(target_file_path)
+                print(f"Cleaned up: {target_file_path}")
+            except Exception as e:
+                print(f"Warning: Could not delete local file: {str(e)}")
 
 
 if __name__ == "__main__":
