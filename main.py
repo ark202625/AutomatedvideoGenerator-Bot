@@ -3,7 +3,7 @@ import asyncio
 import requests
 import discord
 from discord.ext import commands
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 import tempfile
 
@@ -18,7 +18,7 @@ GDRIVE_CLIENT_SECRET = os.getenv("GDRIVE_CLIENT_SECRET")
 GDRIVE_REFRESH_TOKEN = os.getenv("GDRIVE_REFRESH_TOKEN")
 
 # Initialize Gemini Client
-genai.configure(api_key=GEMINI_API_KEY)
+ai_client = genai.Client(api_key=GEMINI_API_KEY)
 gemini_model = genai.GenerativeModel('gemini-2.0-flash')  # Fixed: Changed from gemini-2.5-flash to valid model
 
 # Initialize Discord Bot
