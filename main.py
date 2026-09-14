@@ -3,7 +3,7 @@ import asyncio
 import requests
 import discord
 from discord.ext import commands
-import google.generativeai as genai
+import genai
 from dotenv import load_dotenv
 
 # Load local environment variables
