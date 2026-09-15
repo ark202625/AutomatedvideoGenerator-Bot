@@ -25,10 +25,9 @@ def keep_alive():
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-GDRIVE_CLIENT_ID = "677902998242-jm727d13ttrhbs4ditqqv0js3l3jbmup.apps.googleusercontent.com"
-GDRIVE_CLIENT_SECRET = "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"
-GDRIVE_REFRESH_TOKEN = "1//04cUKZsF4DvPmCgYIARAAGAQSNwF-L9IrAlJltdbza1GHZrbrvxbRWU0VcLl4A-QNsZf6ekFeEwZXUvzN3p_OrOH8DaCXXkZk5SM"
-
+GDRIVE_CLIENT_ID = os.getenv("GDRIVE_CLIENT_ID")
+GDRIVE_CLIENT_SECRET = os.getenv("GDRIVE_CLIENT_SECRET")
+GDRIVE_REFRESH_TOKEN = os.getenv("GDRIVE_REFRESH_TOKEN")
 # Initialize Gemini AI
 genai.configure(api_key=GEMINI_API_KEY)
 llm_model = genai.GenerativeModel('gemini-1.5-flash')
