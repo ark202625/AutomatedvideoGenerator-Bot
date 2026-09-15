@@ -1,66 +1,64 @@
 import os
+import json
 import requests
 import discord
 from discord.ext import commands
 import google.generativeai as genai
 
-# --- SECRETS & CREDENTIALS ---
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")  # Retrieved from environment variables
+# --- CONFIGURATION & CREDENTIALS ---
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEMINI_API_KEY = "AQ.Ab8RN6LyDBYYR7HEvRhTd3T0TsPRlfsA7RH2xXGqhev9gNNABA"
 
-# Google Drive OAuth 2.0 Credentials
+# Google Drive OAuth Credentials
 GDRIVE_CLIENT_ID = "677902998242-jm727d13ttrhbs4ditqqv0js3l3jbmup.apps.googleusercontent.com"
 GDRIVE_CLIENT_SECRET = "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"
 GDRIVE_REFRESH_TOKEN = "1//04cUKZsF4DvPmCgYIARAAGAQSNwF-L9IrAlJltdbza1GHZrbrvxbRWU0VcLl4A-QNsZf6ekFeEwZXUvzN3p_OrOH8DaCXXkZk5SM"
 
-# Initialize Gemini AI Model
+# Initialize Gemini AI
 genai.configure(api_key=GEMINI_API_KEY)
 llm_model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Initialize Discord Bot with Intents
+# Initialize Discord Bot
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"✅ Bot initialized and logged in as {bot.user}")
+    print(f"✅ Bot initialized and online as {bot.user}")
 
 @bot.command(name="generate")
 async def generate_video(ctx, *, user_prompt: str):
-    await ctx.send(f"🎬 **Topic received:** *'{user_prompt}'*\nWriting script prompts with Gemini AI...")
+    await ctx.send(f"🎬 **Idea received:** *'{user_prompt}'*\nGenerating video script & scene prompts...")
 
-    # 1. AI SCRIPT & PROMPT GENERATION
+    # 1. GENERATE SCENE PROMPTS WITH GEMINI AI
     system_instruction = (
-        f"You are an expert AI video director. Based on this topic: '{user_prompt}', "
+        f"You are an expert AI video director. Based on this topic/idea: '{user_prompt}', "
         f"generate exactly 5 highly detailed, cinematic image-to-video text prompts. "
-        f"Output strictly ONLY the 5 prompts, one per line, without any numbering, introductions, or conversational text."
+        f"Output strictly ONLY the 5 prompts, one per line, with no extra text or numbers."
     )
 
     try:
         response = llm_model.generate_content(system_instruction)
-        scene_prompts = [p.strip() for p in response.text.strip().split("\n") if p.strip()][:5]
+        scene_prompts = [line.strip() for line in response.text.strip().split("\n") if line.strip()][:5]
 
-        formatted_prompts = "\n".join([f"{i+1}. {p}" for i, p in enumerate(scene_prompts)])
-        await ctx.send(f"📝 **Generated Video Prompts:**\n```\n{formatted_prompts}\n```")
-        await ctx.send("⚙️ **Triggering video generation pipeline...**")
+        # 2. SAVE SCRIPT TO GOOGLE DRIVE
+        script_saved = save_script_to_gdrive(scene_prompts)
 
-        # 2. RUN PIPELINE & UPLOAD TO DRIVE
-        video_filename = f"{user_prompt.replace(' ', '_')}.mp4"
-        target_file_path = f"/kaggle/working/{video_filename}"
-
-        upload_success = upload_to_gdrive(target_file_path, video_filename)
-
-        if upload_success:
-            await ctx.send(f"✅ **Success!** Video *'{video_filename}'* generated and uploaded to Google Drive.")
+        if script_saved:
+            formatted_prompts = "\n".join([f"{i+1}. {p}" for i, p in enumerate(scene_prompts)])
+            await ctx.send(
+                f"📝 **Script generated and saved to Google Drive:**\n```\n{formatted_prompts}\n```\n"
+                f"⚙️ **Next Step:** Run your Kaggle notebook to render the video!"
+            )
         else:
-            await ctx.send("⚠️ Video processing finished, but Google Drive upload failed.")
+            await ctx.send("❌ Script was generated, but failed to save to Google Drive.")
 
     except Exception as e:
-        await ctx.send(f"❌ Error executing pipeline: `{str(e)}`")
+        await ctx.send(f"❌ Error generating script: `{str(e)}`")
 
-def upload_to_gdrive(file_path, drive_filename):
-    """Refreshes access token and uploads file to Google Drive via API v3."""
+def get_gdrive_access_token():
+    """Exchanges refresh token for an active Google API access token."""
     token_url = "https://oauth2.googleapis.com/token"
     token_data = {
         'client_id': GDRIVE_CLIENT_ID,
@@ -68,33 +66,39 @@ def upload_to_gdrive(file_path, drive_filename):
         'refresh_token': GDRIVE_REFRESH_TOKEN,
         'grant_type': 'refresh_token'
     }
-
     res = requests.post(token_url, data=token_data).json()
-    access_token = res.get('access_token')
+    return res.get('access_token')
 
+def save_script_to_gdrive(scene_prompts, drive_filename="active_script.json"):
+    """Overwrites active_script.json in Google Drive with the new prompts."""
+    access_token = get_gdrive_access_token()
     if not access_token:
-        print("OAuth Refresh Failed:", res)
         return False
 
     headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
-    upload_req = requests.post(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
-        headers=headers,
-        json={'name': drive_filename}
-    )
-    upload_url = upload_req.headers.get('Location')
+    payload = json.dumps({"prompts": scene_prompts})
 
-    if not upload_url:
-        return False
+    # Search if active_script.json already exists in Drive
+    search_url = f"https://www.googleapis.com/drive/v3/files?q=name='{drive_filename}' and trashed=false"
+    search_res = requests.get(search_url, headers=headers).json()
+    files = search_res.get('files', [])
 
-    with open(file_path, 'rb') as f:
-        upload_resp = requests.put(
-            upload_url,
-            headers={'Content-Length': str(os.path.getsize(file_path))},
-            data=f
+    if files:
+        # Update existing file
+        file_id = files[0]['id']
+        upload_url = f"https://www.googleapis.com/upload/drive/v3/files/{file_id}?uploadType=media"
+        upload_resp = requests.patch(upload_url, headers={'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}, data=payload)
+        return upload_resp.status_code in [200, 201]
+    else:
+        # Create new file
+        upload_req = requests.post(
+            'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
+            headers=headers,
+            json={'name': drive_filename, 'mimeType': 'application/json'}
         )
-
-    return upload_resp.status_code in [200, 201]
+        upload_url = upload_req.headers.get('Location')
+        upload_resp = requests.put(upload_url, headers={'Content-Length': str(len(payload))}, data=payload)
+        return upload_resp.status_code in [200, 201]
 
 if __name__ == "__main__":
     bot.run(DISCORD_TOKEN)
