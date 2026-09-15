@@ -91,8 +91,7 @@ def save_script_to_gdrive(scene_prompts, drive_filename="active_script.json"):
     search_url = f"https://www.googleapis.com/drive/v3/files?q=name='{drive_filename}' and trashed=false"
     search_res = requests.get(search_url, headers=headers).json()
     files = search_res.get('files', [])
-
-    def save_script_to_gdrive(scene_prompts, drive_filename="active_script.json"):
+def save_script_to_gdrive(scene_prompts, drive_filename="active_script.json"):
     access_token = get_gdrive_access_token()
     if not access_token:
         print("❌ Failed to obtain Google Drive access token.")
@@ -120,6 +119,9 @@ def save_script_to_gdrive(scene_prompts, drive_filename="active_script.json"):
         if not upload_url:
             print(f"❌ Resumable upload failed: {upload_req.text}")
             return False
+            
+        upload_resp = requests.put(upload_url, headers={'Content-Length': str(len(payload))}, data=payload)
+        return upload_resp.status_code in [200, 201]
             
         upload_resp = requests.put(upload_url, headers={'Content-Length': str(len(payload))}, data=payload)
         return upload_resp.status_code in [200, 201]
