@@ -122,13 +122,10 @@ def save_script_to_gdrive(scene_prompts, drive_filename="active_script.json"):
             
         upload_resp = requests.put(upload_url, headers={'Content-Length': str(len(payload))}, data=payload)
         return upload_resp.status_code in [200, 201]
-        upload_resp = requests.put(upload_url, headers={'Content-Length': str(len(payload))}, data=payload)
-        return upload_resp.status_code in [200, 201]
-            
-        upload_resp = requests.put(upload_url, headers={'Content-Length': str(len(payload))}, data=payload)
-        return upload_resp.status_code in [200, 201]
 
 # --- 3. START BOT & KEEP ALIVE (MUST BE AT THE VERY BOTTOM) ---
 if __name__ == "__main__":
+    keep_alive()
+    bot.run(DISCORD_TOKEN)
     keep_alive()
     bot.run(DISCORD_TOKEN)
