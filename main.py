@@ -92,10 +92,23 @@ def save_script_to_gdrive(scene_prompts, drive_filename="active_script.json"):
     search_res = requests.get(search_url, headers=headers).json()
     files = search_res.get('files', [])
 
+    def save_script_to_gdrive(scene_prompts, drive_filename="active_script.json"):
+    access_token = get_gdrive_access_token()
+    if not access_token:
+        print("❌ Failed to obtain Google Drive access token.")
+        return False
+
+    headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
+    payload = json.dumps({"prompts": scene_prompts})
+
+    search_url = f"https://www.googleapis.com/drive/v3/files?q=name='{drive_filename}' and trashed=false"
+    search_res = requests.get(search_url, headers=headers).json()
+    files = search_res.get('files', [])
+
     if files:
         file_id = files[0]['id']
         upload_url = f"https://www.googleapis.com/upload/drive/v3/files/{file_id}?uploadType=media"
-        upload_resp = requests.patch(upload_url, headers={'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}, data=payload)
+        upload_resp = requests.patch(upload_url, headers=headers, data=payload)
         return upload_resp.status_code in [200, 201]
     else:
         upload_req = requests.post(
@@ -104,6 +117,10 @@ def save_script_to_gdrive(scene_prompts, drive_filename="active_script.json"):
             json={'name': drive_filename, 'mimeType': 'application/json'}
         )
         upload_url = upload_req.headers.get('Location')
+        if not upload_url:
+            print(f"❌ Resumable upload failed: {upload_req.text}")
+            return False
+            
         upload_resp = requests.put(upload_url, headers={'Content-Length': str(len(payload))}, data=payload)
         return upload_resp.status_code in [200, 201]
 
