@@ -7,7 +7,7 @@ import google.generativeai as genai
 import threading
 from flask import Flask
 
-# Keep-alive web server for Render / UptimeRobot
+# --- 1. KEEP-ALIVE WEB SERVER FOR RENDER / UPTIMEROBOT ---
 app = Flask('')
 
 @app.route('/')
@@ -21,15 +21,10 @@ def keep_alive():
     t = threading.Thread(target=run)
     t.start()
 
-# Call keep_alive() before bot.run()
-keep_alive()
-bot.run(DISCORD_TOKEN)
-
-# --- CONFIGURATION & CREDENTIALS ---
+# --- 2. CONFIGURATION & CREDENTIALS ---
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEMINI_API_KEY = "AQ.Ab8RN6LyDBYYR7HEvRhTd3T0TsPRlfsA7RH2xXGqhev9gNNABA"
 
-# Google Drive OAuth Credentials
 GDRIVE_CLIENT_ID = "677902998242-jm727d13ttrhbs4ditqqv0js3l3jbmup.apps.googleusercontent.com"
 GDRIVE_CLIENT_SECRET = "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"
 GDRIVE_REFRESH_TOKEN = "1//04cUKZsF4DvPmCgYIARAAGAQSNwF-L9IrAlJltdbza1GHZrbrvxbRWU0VcLl4A-QNsZf6ekFeEwZXUvzN3p_OrOH8DaCXXkZk5SM"
@@ -51,7 +46,6 @@ async def on_ready():
 async def generate_video(ctx, *, user_prompt: str):
     await ctx.send(f"🎬 **Idea received:** *'{user_prompt}'*\nGenerating video script & scene prompts...")
 
-    # 1. GENERATE SCENE PROMPTS WITH GEMINI AI
     system_instruction = (
         f"You are an expert AI video director. Based on this topic/idea: '{user_prompt}', "
         f"generate exactly 5 highly detailed, cinematic image-to-video text prompts. "
@@ -62,7 +56,6 @@ async def generate_video(ctx, *, user_prompt: str):
         response = llm_model.generate_content(system_instruction)
         scene_prompts = [line.strip() for line in response.text.strip().split("\n") if line.strip()][:5]
 
-        # 2. SAVE SCRIPT TO GOOGLE DRIVE
         script_saved = save_script_to_gdrive(scene_prompts)
 
         if script_saved:
@@ -78,7 +71,6 @@ async def generate_video(ctx, *, user_prompt: str):
         await ctx.send(f"❌ Error generating script: `{str(e)}`")
 
 def get_gdrive_access_token():
-    """Exchanges refresh token for an active Google API access token."""
     token_url = "https://oauth2.googleapis.com/token"
     token_data = {
         'client_id': GDRIVE_CLIENT_ID,
@@ -90,7 +82,6 @@ def get_gdrive_access_token():
     return res.get('access_token')
 
 def save_script_to_gdrive(scene_prompts, drive_filename="active_script.json"):
-    """Overwrites active_script.json in Google Drive with the new prompts."""
     access_token = get_gdrive_access_token()
     if not access_token:
         return False
@@ -98,19 +89,16 @@ def save_script_to_gdrive(scene_prompts, drive_filename="active_script.json"):
     headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
     payload = json.dumps({"prompts": scene_prompts})
 
-    # Search if active_script.json already exists in Drive
     search_url = f"https://www.googleapis.com/drive/v3/files?q=name='{drive_filename}' and trashed=false"
     search_res = requests.get(search_url, headers=headers).json()
     files = search_res.get('files', [])
 
     if files:
-        # Update existing file
         file_id = files[0]['id']
         upload_url = f"https://www.googleapis.com/upload/drive/v3/files/{file_id}?uploadType=media"
         upload_resp = requests.patch(upload_url, headers={'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}, data=payload)
         return upload_resp.status_code in [200, 201]
     else:
-        # Create new file
         upload_req = requests.post(
             'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
             headers=headers,
@@ -120,5 +108,7 @@ def save_script_to_gdrive(scene_prompts, drive_filename="active_script.json"):
         upload_resp = requests.put(upload_url, headers={'Content-Length': str(len(payload))}, data=payload)
         return upload_resp.status_code in [200, 201]
 
+# --- 3. START BOT & KEEP ALIVE (MUST BE AT THE VERY BOTTOM) ---
 if __name__ == "__main__":
+    keep_alive()
     bot.run(DISCORD_TOKEN)
