@@ -4,6 +4,26 @@ import requests
 import discord
 from discord.ext import commands
 import google.generativeai as genai
+import threading
+from flask import Flask
+
+# Keep-alive web server for Render / UptimeRobot
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is active and running!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = threading.Thread(target=run)
+    t.start()
+
+# Call keep_alive() before bot.run()
+keep_alive()
+bot.run(DISCORD_TOKEN)
 
 # --- CONFIGURATION & CREDENTIALS ---
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
