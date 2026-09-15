@@ -30,7 +30,7 @@ GDRIVE_CLIENT_SECRET = os.getenv("GDRIVE_CLIENT_SECRET")
 GDRIVE_REFRESH_TOKEN = os.getenv("GDRIVE_REFRESH_TOKEN")
 # Initialize Gemini AI
 genai.configure(api_key=GEMINI_API_KEY)
-llm_model = genai.GenerativeModel('gemini-1.5-flash')
+llm_model = genai.GenerativeModel('gemini-2.5-flash')
 
 # Initialize Discord Bot
 intents = discord.Intents.default()
